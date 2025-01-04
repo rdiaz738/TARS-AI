@@ -28,7 +28,7 @@ from module_engine import check_for_module
 from module_tts import generate_tts_audio
 from module_vision import get_image_caption_from_base64
 from module_stt import STTManager
-from module_nest import initiate_auth_flow, fetch_and_display_snapshot, list_nest_devices, refresh_access_token
+from module_nest import start_auth_flow, fetch_and_display_snapshot, list_nest_devices, refresh_access_token
 
 # === Constants and Globals ===
 character_manager = None
@@ -47,7 +47,7 @@ def start_nest_auth_flow():
     Start the OAuth flow for Nest Camera authentication.
     """
     print("Starting Nest authentication flow...")
-    initiate_auth_flow()
+    start_auth_flow()
 
 # === Nest Camera Snapshot Handling ===
 def start_camera_snapshot():
