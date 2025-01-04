@@ -80,6 +80,7 @@ def start_auth_flow():
 
     # Exchange the code for tokens
     tokens = exchange_code_for_tokens()
+    list_nest_devices(tokens.get("access_token"))
     print("Access Token:", tokens.get("access_token"))
     print("Refresh Token:", tokens.get("refresh_token"))
 
