@@ -9,7 +9,9 @@ Integrates modules and manages key functionalities, including:
 - Prompt building and AI response processing
 - Wake word handling and user interaction workflows
 - Emotion detection and system threading
+- Nest Camera Integration
 """
+
 # === Standard Libraries ===
 import os
 import threading
@@ -26,6 +28,7 @@ from module_engine import check_for_module
 from module_tts import generate_tts_audio
 from module_vision import get_image_caption_from_base64
 from module_stt import STTManager
+from module_nest import initiate_auth_flow, fetch_and_display_snapshot, list_nest_devices, refresh_access_token
 
 # === Constants and Globals ===
 character_manager = None
@@ -38,6 +41,22 @@ CONFIG = load_config()
 stop_event = threading.Event()
 executor = concurrent.futures.ProcessPoolExecutor(max_workers=4)
 
+# === Nest Camera Authentication ===
+def start_nest_auth_flow():
+    """
+    Start the OAuth flow for Nest Camera authentication.
+    """
+    print("Starting Nest authentication flow...")
+    initiate_auth_flow()
+
+# === Nest Camera Snapshot Handling ===
+def start_camera_snapshot():
+    """
+    Start fetching and displaying Nest camera snapshots.
+    """
+    print("Fetching and displaying Nest camera snapshots...")
+    threading.Thread(target=fetch_and_display_snapshot, daemon=True).start()
+
 # === Threads ===
 def start_bt_controller_thread():
     """
@@ -49,7 +68,18 @@ def start_bt_controller_thread():
             start_controls()
     except Exception as e:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ERROR: Error in BT Controller thread: {e}")
-
+# === Get Nest Devices ===
+def fetch_nest_devices():
+    """
+    Fetch and list available Nest devices.
+    """
+    if CONFIG["NEST"].getboolean("use_nest"):
+        print("Fetching available Nest devices...")
+        access_token = refresh_access_token()
+        if access_token:
+            list_nest_devices(access_token)
+    else:
+        print("Nest Camera functionality is disabled in the configuration.")
 # === Core Functions ===
 def extract_text(json_response, picture):
     """
@@ -389,3 +419,4 @@ def initialize_managers(mem_manager, char_manager, stt_mgr):
     memory_manager = mem_manager
     character_manager = char_manager
     stt_manager = stt_mgr
+start_nest_auth_flow()

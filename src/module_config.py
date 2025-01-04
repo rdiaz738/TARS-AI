@@ -110,6 +110,14 @@ def load_config():
             "backStarboard": config['SERVO']['backStarboard'],
             "perfectStaroffset": config['SERVO']['perfectStaroffset'],
         },
+        "NEST": {
+            "use_nest": config["NEST"].getboolean("use_nest"),
+            "client_id": config["NEST"]["client_id"],
+            "client_secret": config["NEST"]["client_secret"],
+            "refresh_token": config["NEST"]["refresh_token"],
+            "project_id": config["NEST"]["project_id"],
+            "device_id": config["NEST"]["device_id"],
+        },
     }
 
 def get_api_key(llm_backend: str) -> str:

@@ -12,10 +12,12 @@ This is achieved using a pre-trained Naive Bayes classifier and TF-IDF vectorize
 import os
 import joblib
 from datetime import datetime
+import threading 
 
 # === Custom Modules ===
 from module_websearch import search_google, search_google_news
 from module_vision import describe_camera_view
+from module_nest import fetch_and_display_snapshot
 
 # === Constants ===
 MODEL_FILENAME = 'engine/pickles/naive_bayes_model.pkl'
@@ -106,6 +108,10 @@ def check_for_module(user_input):
         
         elif predicted_class == "Mute":
             return "Mute"
+        elif predicted_class == "NestCamera":
+            threading.Thread(target=fetch_and_display_snapshot, daemon=True).start()
+            return "Displaying Nest camera feed."
+
 
     # Default response if no suitable module is found
     return "No_Tool"

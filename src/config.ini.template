@@ -124,3 +124,11 @@ neutralStarboard = 350
 backStarboard = 400
 # Fine-tuning offset for the starboard drive servo
 perfectStaroffset = 0
+
+
+[NEST]
+client_id = YOUR_CLIENT_ID
+client_secret = YOUR_CLIENT_SECRET
+refresh_token = YOUR_REFRESH_TOKEN
+project_id = YOUR_PROJECT_ID
+device_id = YOUR_DEVICE_ID

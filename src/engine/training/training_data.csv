@@ -207,6 +207,10 @@ look around and show me,Vision
 use Vision to check this,Vision
 what am i holding,Vision
 hey tars what am i holding?,Vision
+Show me the Nest camera,NestCamera
+Display the camera feed,NestCamera
+What’s happening on the camera,NestCamera
+Open the camera view,NestCamera
 hey tars be quiet,Mute
 can you stop talking,Mute
 tars zip it,Mute
