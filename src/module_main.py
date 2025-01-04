@@ -28,7 +28,7 @@ from module_engine import check_for_module
 from module_tts import generate_tts_audio
 from module_vision import get_image_caption_from_base64
 from module_stt import STTManager
-from module_nest import start_auth_flow, refresh_access_token, get_camera_snapshot, display_snapshot, get_camera_live_stream, display_live_stream, list_nest_devices
+from module_nest import start_auth_flow, refresh_access_token,validate_camera_device, get_camera_snapshot, display_snapshot, get_camera_live_stream, display_live_stream, list_nest_devices
 
 # === Constants and Globals ===
 character_manager = None
@@ -456,4 +456,3 @@ def initialize_managers(mem_manager, char_manager, stt_mgr):
     memory_manager = mem_manager
     character_manager = char_manager
     stt_manager = stt_mgr
-start_nest_auth_flow()
