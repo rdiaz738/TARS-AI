@@ -110,14 +110,7 @@ def load_config():
             "backStarboard": config['SERVO']['backStarboard'],
             "perfectStaroffset": config['SERVO']['perfectStaroffset'],
         },
-        "NEST": {
-            "use_nest": config["NEST"].getboolean("use_nest", fallback=False),
-            "client_id": config["NEST"].get("client_id", fallback=""),
-            "client_secret": config["NEST"].get("client_secret", fallback=""),
-            "refresh_token": config["NEST"].get("refresh_token", fallback=""),
-            "project_id": config["NEST"].get("project_id", fallback=""),
-            "device_id": config["NEST"].get("device_id", fallback="")
-        },
+        "NEST": get_nest_credentials(),   
     }
 
 def get_api_key(llm_backend: str) -> str:
@@ -148,3 +141,18 @@ def get_api_key(llm_backend: str) -> str:
     
     return api_key
 
+def get_nest_credentials() -> dict:
+    """
+    Retrieve Nest Camera credentials from environment variables.
+
+    Returns:
+    - dict: A dictionary containing Nest Camera credentials.
+    """
+    return {
+        "use_nest": os.getenv("USE_NEST", "False").lower() == "true",
+        "client_id": os.getenv("NEST_CLIENT_ID"),
+        "client_secret": os.getenv("NEST_CLIENT_SECRET"),
+        "refresh_token": os.getenv("NEST_REFRESH_TOKEN"),
+        "project_id": os.getenv("NEST_PROJECT_ID"),
+        "device_id": os.getenv("NEST_DEVICE_ID"),
+    }
