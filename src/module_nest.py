@@ -112,9 +112,10 @@ def get_camera_snapshot(access_token):
     """
     Fetch a snapshot from the Nest camera.
     """
-    url = f"{NEST_API_URL}/enterprises/{CONFIG['NEST']['project_id']}/devices/{CONFIG['NEST']['device_id']}:executeCommand"
+    url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
     headers = {"Authorization": f"Bearer {access_token}"}
     payload = {"command": "sdm.devices.commands.CameraEventImage.GenerateImage", "params": {}}
+    
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code == 200:
         image_url = response.json().get("results", {}).get("url")
@@ -124,6 +125,7 @@ def get_camera_snapshot(access_token):
             raise Exception("Snapshot URL not found.")
     else:
         raise Exception(f"Failed to fetch snapshot: {response.text}")
+
 
 def display_snapshot(image_bytes):
     """
