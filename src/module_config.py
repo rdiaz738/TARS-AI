@@ -110,7 +110,14 @@ def load_config():
             "backStarboard": config['SERVO']['backStarboard'],
             "perfectStaroffset": config['SERVO']['perfectStaroffset'],
         },
-        "NEST": get_nest_credentials(),
+        "NEST": {
+            "use_nest": config['NEST']['use_nest'],
+            "client_id": config['NEST']['client_id'],
+            "client_secret": config['NEST']['client_secret'],
+            "project_id": config['NEST']['project_id'],
+            "device_id": config['NEST']['device_id'],
+            "redirect_url": config['NEST']['redirect_url']
+        },
     }
 
 def get_api_key(llm_backend: str) -> str:
@@ -141,18 +148,4 @@ def get_api_key(llm_backend: str) -> str:
     
     return api_key
 
-def get_nest_credentials() -> dict:
-    """
-    Retrieve Nest Camera credentials and convert 'use_nest' to boolean.
-
-    Returns:
-    - dict: A dictionary containing Nest Camera credentials.
-    """
-    return {
-        "use_nest": os.getenv("USE_NEST", "False").lower() in ("true", "1", "yes"),
-        "client_id": os.getenv("NEST_CLIENT_ID"),
-        "client_secret": os.getenv("NEST_CLIENT_SECRET"),
-        "refresh_token": os.getenv("NEST_REFRESH_TOKEN"),
-        "project_id": os.getenv("NEST_PROJECT_ID"),
-        "device_id": os.getenv("NEST_DEVICE_ID"),
-    }
+ 

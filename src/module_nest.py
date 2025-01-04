@@ -32,7 +32,7 @@ def log_error_and_raise(message, response=None):
 def get_auth_code_url():
     params = {
         "client_id": CONFIG['NEST']['client_id'],
-        "redirect_uri": "http://localhost:8080/callback",
+        "redirect_uri": CONFIG['NEST']["redirect_url"],
         "response_type": "code",
         "scope": "https://www.googleapis.com/auth/sdm.service"
     }
@@ -65,7 +65,7 @@ def exchange_code_for_tokens():
         "client_secret": CONFIG['NEST']['client_secret'],
         "code": auth_code,
         "grant_type": "authorization_code",
-        "redirect_uri": "http://localhost:8080/callback"
+        "redirect_uri": CONFIG['NEST']["redirect_url"]
     }
     response = requests.post(url, data=payload)
     if response.status_code == 200:
@@ -199,6 +199,7 @@ def list_nest_devices(access_token):
     """
     url = f"{NEST_API_URL}/enterprises/{CONFIG['NEST']['project_id']}/devices"
     headers = {"Authorization": f"Bearer {access_token}"}
+    print(f"LIST DEVICE URL: {url}")
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         devices = response.json().get("devices", [])
