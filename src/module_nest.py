@@ -7,6 +7,7 @@ from io import BytesIO
 import webbrowser
 import logging
 import qrcode  # For generating QR codes
+import os  # For launching VLC/FFmpeg
 from module_config import load_config
 
 # Load configuration
@@ -181,12 +182,19 @@ def get_camera_live_stream(access_token):
     else:
         log_error_and_raise("Failed to fetch live stream", response)
 
-def display_live_stream(stream_url):
+def play_live_stream(stream_url):
     """
-    Open the live stream URL in the default web browser.
+    Play the live stream using VLC or FFmpeg.
     """
-    logging.info(f"Opening live stream: {stream_url}")
-    webbrowser.open(stream_url)
+    try:
+        logging.info(f"Playing live stream: {stream_url}")
+        # Option 1: Use VLC
+        os.system(f"vlc {stream_url}")
+
+        # Option 2: Uncomment to save the stream using FFmpeg
+        # os.system(f'ffmpeg -i "{stream_url}" -c copy output.mp4')
+    except Exception as e:
+        logging.error(f"Failed to play the live stream: {e}")
 
 def handle_nest_camera_live_stream():
     """
@@ -195,7 +203,7 @@ def handle_nest_camera_live_stream():
     try:
         access_token = get_access_token()
         stream_url = get_camera_live_stream(access_token)
-        display_live_stream(stream_url)
+        play_live_stream(stream_url)
     except Exception as e:
         logging.error(f"Failed to fetch and display live stream: {e}")
 
