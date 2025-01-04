@@ -28,7 +28,7 @@ from module_engine import check_for_module
 from module_tts import generate_tts_audio
 from module_vision import get_image_caption_from_base64
 from module_stt import STTManager
-from module_nest import start_auth_flow, refresh_access_token,validate_camera_device, get_camera_snapshot, display_snapshot, get_camera_live_stream, display_live_stream, list_nest_devices
+from module_nest import start_auth_flow, get_access_token,validate_camera_device, get_camera_snapshot, display_snapshot, get_camera_live_stream, display_live_stream, list_nest_devices
 
 # === Constants and Globals ===
 character_manager = None
@@ -56,7 +56,7 @@ def handle_nest_camera_snapshot():
     """
     try:
         print("[INFO] Fetching access token...")
-        access_token = refresh_access_token()
+        access_token = get_access_token()
 
         print("[INFO] Validating device traits...")
         devices = list_nest_devices(access_token)
@@ -90,7 +90,7 @@ def fetch_nest_devices():
     """
     if CONFIG["NEST"].getboolean("use_nest"):
         print("Fetching available Nest devices...")
-        access_token = refresh_access_token()
+        access_token = get_access_token()
         if access_token:
             list_nest_devices(access_token)
     else:
@@ -102,7 +102,7 @@ def handle_nest_camera_live_stream():
     """
     try:
         print("[INFO] Fetching access token...")
-        access_token = refresh_access_token()
+        access_token = get_access_token()
 
         print("[INFO] Validating device traits...")
         devices = list_nest_devices(access_token)

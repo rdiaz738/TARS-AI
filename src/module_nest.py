@@ -6,8 +6,8 @@ from PIL import Image
 from io import BytesIO
 import webbrowser
 import logging
-from module_config import load_config
 import qrcode  # For generating QR codes
+from module_config import load_config
 
 # Load configuration
 CONFIG = load_config()
@@ -30,6 +30,9 @@ def log_error_and_raise(message, response=None):
 
 # === Authentication Flow ===
 def get_auth_code_url():
+    """
+    Generate the Google OAuth 2.0 authorization URL.
+    """
     params = {
         "client_id": CONFIG['NEST']['client_id'],
         "redirect_uri": CONFIG['NEST']["redirect_url"],
@@ -40,6 +43,9 @@ def get_auth_code_url():
 
 @app.route("/callback")
 def callback():
+    """
+    Handle the OAuth callback and extract the authorization code.
+    """
     global auth_code
     auth_code = request.args.get("code")
     return "Authorization successful! You can close this tab."
@@ -55,6 +61,9 @@ def generate_qr_code(auth_url):
     img.show()
 
 def exchange_code_for_tokens():
+    """
+    Exchange the authorization code for access and refresh tokens.
+    """
     global auth_code
     if not auth_code:
         raise Exception("No authorization code found. Ensure the authentication flow is completed.")
@@ -83,12 +92,12 @@ def start_auth_flow():
         try:
             app.run(host="0.0.0.0", port=8080, debug=False)
         except Exception as e:
-            print(f"[ERROR] Flask server failed to start: {e}")
+            logging.error(f"Flask server failed to start: {e}")
 
     Thread(target=run_flask).start()
 
     auth_url = get_auth_code_url()
-    print(f"Visit this URL to authenticate:\n{auth_url}")
+    logging.info(f"Visit this URL to authenticate:\n{auth_url}")
     generate_qr_code(auth_url)
 
     while auth_code is None:
@@ -97,29 +106,24 @@ def start_auth_flow():
     tokens = exchange_code_for_tokens()
     access_token = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
+    CONFIG['NEST']['access_token'] = access_token
+    if refresh_token:
+        CONFIG['NEST']['refresh_token'] = refresh_token
+
     devices = list_nest_devices(access_token)
-    
-    print("Access Token:", access_token)
-    print("Refresh Token:", refresh_token)
+    logging.info("Access Token stored successfully.")
     return devices
 
 # === Token Management ===
-def refresh_access_token():
+def get_access_token():
     """
-    Refresh the access token using the refresh token.
+    Retrieve the access token from the configuration.
     """
-    url = "https://oauth2.googleapis.com/token"
-    payload = {
-        "client_id": CONFIG['NEST']['client_id'],
-        "client_secret": CONFIG['NEST']['client_secret'],
-        "refresh_token": CONFIG['NEST']['refresh_token'],
-        "grant_type": "refresh_token"
-    }
-    response = requests.post(url, data=payload)
-    if response.status_code == 200:
-        return response.json().get("access_token")
-    else:
-        log_error_and_raise("Failed to refresh access token", response)
+    access_token = CONFIG['NEST'].get('access_token')
+    if not access_token:
+        logging.error("No access token found in configuration.")
+        raise Exception("Missing access token.")
+    return access_token
 
 # === Camera Snapshot and Live Stream ===
 def get_camera_snapshot(access_token):
@@ -151,7 +155,7 @@ def fetch_and_display_snapshot():
     Fetch and display a snapshot from the Nest camera.
     """
     try:
-        access_token = refresh_access_token()
+        access_token = get_access_token()
         image_bytes = get_camera_snapshot(access_token)
         display_snapshot(image_bytes)
     except Exception as e:
@@ -178,7 +182,7 @@ def display_live_stream(stream_url):
     """
     Open the live stream URL in the default web browser.
     """
-    print(f"Opening live stream: {stream_url}")
+    logging.info(f"Opening live stream: {stream_url}")
     webbrowser.open(stream_url)
 
 def handle_nest_camera_live_stream():
@@ -186,7 +190,7 @@ def handle_nest_camera_live_stream():
     Fetch and display the live stream from the Nest camera.
     """
     try:
-        access_token = refresh_access_token()
+        access_token = get_access_token()
         stream_url = get_camera_live_stream(access_token)
         display_live_stream(stream_url)
     except Exception as e:
@@ -199,19 +203,16 @@ def list_nest_devices(access_token):
     """
     url = f"{NEST_API_URL}/enterprises/{CONFIG['NEST']['project_id']}/devices"
     headers = {"Authorization": f"Bearer {access_token}"}
-    print(f"LIST DEVICE URL: {url}")
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         devices = response.json().get("devices", [])
         if devices:
-            print("Available Devices:")
+            logging.info("Available Devices:")
             for device in devices:
-                print(f"Name: {device.get('name')}")
-                print(f"Type: {device.get('type')}")
-                print(f"Traits: {device.get('traits')}")
+                logging.info(f"Name: {device.get('name')}, Type: {device.get('type')}")
             return devices
         else:
-            print("No devices found.")
+            logging.info("No devices found.")
             return []
     else:
         log_error_and_raise("Failed to fetch devices", response)
