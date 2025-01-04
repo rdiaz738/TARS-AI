@@ -120,6 +120,7 @@ def get_access_token():
     Retrieve the access token from the configuration.
     """
     access_token = CONFIG['NEST'].get('access_token')
+    logging.info(f"ACCESS TOKEN: {access_token}")
     if not access_token:
         logging.error("No access token found in configuration.")
         raise Exception("Missing access token.")
