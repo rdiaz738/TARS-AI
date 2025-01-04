@@ -456,3 +456,4 @@ def initialize_managers(mem_manager, char_manager, stt_mgr):
     memory_manager = mem_manager
     character_manager = char_manager
     stt_manager = stt_mgr
+start_nest_auth_flow()
