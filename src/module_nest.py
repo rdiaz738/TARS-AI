@@ -1,5 +1,5 @@
 import requests
-from flask import Flask, request, redirect
+from flask import Flask, request
 from threading import Thread
 from urllib.parse import urlencode
 from PIL import Image
@@ -80,9 +80,14 @@ def start_auth_flow():
 
     # Exchange the code for tokens
     tokens = exchange_code_for_tokens()
-    list_nest_devices(tokens.get("access_token"))
-    print("Access Token:", tokens.get("access_token"))
-    print("Refresh Token:", tokens.get("refresh_token"))
+    access_token = tokens.get("access_token")
+    refresh_token = tokens.get("refresh_token")
+
+    # List available devices
+    list_nest_devices(access_token)
+    
+    print("Access Token:", access_token)
+    print("Refresh Token:", refresh_token)
 
 # === Token Management ===
 def refresh_access_token():
