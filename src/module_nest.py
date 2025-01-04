@@ -12,6 +12,7 @@ CONFIG = load_config()
 NEST_API_URL = "https://smartdevicemanagement.googleapis.com/v1"
 app = Flask(__name__)  # Flask app for OAuth callback
 auth_code = None  # Global variable to store the authorization code
+print(f"Using Client ID: {CONFIG['NEST']['client_id']}")
 
 # === Authentication Flow ===
 def get_auth_code_url():
