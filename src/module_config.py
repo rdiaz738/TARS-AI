@@ -110,7 +110,7 @@ def load_config():
             "backStarboard": config['SERVO']['backStarboard'],
             "perfectStaroffset": config['SERVO']['perfectStaroffset'],
         },
-        "NEST": get_nest_credentials(),   
+        "NEST": get_nest_credentials(),
     }
 
 def get_api_key(llm_backend: str) -> str:
@@ -143,13 +143,13 @@ def get_api_key(llm_backend: str) -> str:
 
 def get_nest_credentials() -> dict:
     """
-    Retrieve Nest Camera credentials from environment variables.
+    Retrieve Nest Camera credentials and convert 'use_nest' to boolean.
 
     Returns:
     - dict: A dictionary containing Nest Camera credentials.
     """
     return {
-        "use_nest": os.getenv("USE_NEST", "False").lower() == "true",
+        "use_nest": os.getenv("USE_NEST", "False").lower() in ("true", "1", "yes"),
         "client_id": os.getenv("NEST_CLIENT_ID"),
         "client_secret": os.getenv("NEST_CLIENT_SECRET"),
         "refresh_token": os.getenv("NEST_REFRESH_TOKEN"),
