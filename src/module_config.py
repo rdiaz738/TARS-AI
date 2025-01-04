@@ -111,12 +111,12 @@ def load_config():
             "perfectStaroffset": config['SERVO']['perfectStaroffset'],
         },
         "NEST": {
-            "use_nest": config["NEST"].getboolean("use_nest"),
-            "client_id": config["NEST"]["client_id"],
-            "client_secret": config["NEST"]["client_secret"],
-            "refresh_token": config["NEST"]["refresh_token"],
-            "project_id": config["NEST"]["project_id"],
-            "device_id": config["NEST"]["device_id"],
+            "use_nest": config["NEST"].getboolean("use_nest", fallback=False),
+            "client_id": config["NEST"].get("client_id", fallback=""),
+            "client_secret": config["NEST"].get("client_secret", fallback=""),
+            "refresh_token": config["NEST"].get("refresh_token", fallback=""),
+            "project_id": config["NEST"].get("project_id", fallback=""),
+            "device_id": config["NEST"].get("device_id", fallback="")
         },
     }
 
