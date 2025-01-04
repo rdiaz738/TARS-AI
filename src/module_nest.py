@@ -7,6 +7,7 @@ from io import BytesIO
 import webbrowser
 import logging
 from module_config import load_config
+import qrcode  # For generating QR codes
 
 # Load configuration
 CONFIG = load_config()
@@ -43,6 +44,16 @@ def callback():
     auth_code = request.args.get("code")
     return "Authorization successful! You can close this tab."
 
+def generate_qr_code(auth_url):
+    """
+    Generate a QR code for the authorization URL.
+    """
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(auth_url)
+    qr.make(fit=True)
+    img = qr.make_image(fill='black', back_color='white')
+    img.show()
+
 def exchange_code_for_tokens():
     global auth_code
     if not auth_code:
@@ -78,7 +89,7 @@ def start_auth_flow():
 
     auth_url = get_auth_code_url()
     print(f"Visit this URL to authenticate:\n{auth_url}")
-    webbrowser.open(auth_url)
+    generate_qr_code(auth_url)
 
     while auth_code is None:
         pass
@@ -110,7 +121,7 @@ def refresh_access_token():
     else:
         log_error_and_raise("Failed to refresh access token", response)
 
-# === Camera Snapshot ===
+# === Camera Snapshot and Live Stream ===
 def get_camera_snapshot(access_token):
     """
     Fetch a snapshot from the Nest camera.
@@ -146,7 +157,6 @@ def fetch_and_display_snapshot():
     except Exception as e:
         logging.error(f"Failed to fetch and display snapshot: {e}")
 
-# === Camera Live Stream ===
 def get_camera_live_stream(access_token):
     """
     Fetch a live stream URL from the Nest camera.
@@ -182,7 +192,7 @@ def handle_nest_camera_live_stream():
     except Exception as e:
         logging.error(f"Failed to fetch and display live stream: {e}")
 
-# === List Devices ===
+# === Device Management ===
 def list_nest_devices(access_token):
     """
     List all devices associated with the Nest account and return them.
@@ -205,18 +215,9 @@ def list_nest_devices(access_token):
     else:
         log_error_and_raise("Failed to fetch devices", response)
 
-# === Validate Device ID ===
 def validate_camera_device(devices, device_id, trait="sdm.devices.traits.CameraEventImage"):
     """
     Validate that the provided device ID corresponds to a camera and supports the required trait.
-
-    Parameters:
-        devices (list): List of devices.
-        device_id (str): The device ID to validate.
-        trait (str): The required trait to validate (default: 'sdm.devices.traits.CameraEventImage').
-
-    Returns:
-        bool: True if the device is valid and supports the trait, False otherwise.
     """
     for device in devices:
         if device['name'] == device_id and trait in device.get('traits', {}):

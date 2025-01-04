@@ -456,4 +456,10 @@ def initialize_managers(mem_manager, char_manager, stt_mgr):
     memory_manager = mem_manager
     character_manager = char_manager
     stt_manager = stt_mgr
-start_nest_auth_flow()
+
+# Initialize Nest Authentication Flow if Enabled
+if CONFIG['NEST'].getboolean('use_nest'):
+    print("Nest functionality is enabled. Starting authentication flow...")
+    start_nest_auth_flow()
+else:
+    print("Nest functionality is disabled.")
