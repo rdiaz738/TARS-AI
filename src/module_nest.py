@@ -1,4 +1,6 @@
 import requests
+from flask import Flask, request, redirect
+from threading import Thread
 from urllib.parse import urlencode
 from PIL import Image
 from io import BytesIO
@@ -8,30 +10,46 @@ from module_config import load_config
 # Load configuration
 CONFIG = load_config()
 NEST_API_URL = "https://smartdevicemanagement.googleapis.com/v1"
+app = Flask(__name__)  # Flask app for OAuth callback
+auth_code = None  # Global variable to store the authorization code
 
+# === Authentication Flow ===
 def get_auth_code_url():
     """
     Generate the Google OAuth 2.0 authorization URL.
     """
     params = {
         "client_id": CONFIG['NEST']['client_id'],
-        "redirect_uri": "http://localhost",
+        "redirect_uri": "http://localhost:8080/callback",
         "response_type": "code",
         "scope": "https://www.googleapis.com/auth/sdm.service"
     }
     return f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
 
-def exchange_code_for_tokens(auth_code):
+@app.route("/callback")
+def callback():
+    """
+    Handle the OAuth callback and extract the authorization code.
+    """
+    global auth_code
+    auth_code = request.args.get("code")
+    return "Authorization successful! You can close this tab."
+
+def exchange_code_for_tokens():
     """
     Exchange the authorization code for access and refresh tokens.
     """
+    global auth_code
+    if not auth_code:
+        raise Exception("No authorization code found. Ensure the authentication flow is completed.")
+
     url = "https://oauth2.googleapis.com/token"
     payload = {
         "client_id": CONFIG['NEST']['client_id'],
         "client_secret": CONFIG['NEST']['client_secret'],
         "code": auth_code,
         "grant_type": "authorization_code",
-        "redirect_uri": "http://localhost"
+        "redirect_uri": "http://localhost:8080/callback"
     }
     response = requests.post(url, data=payload)
     if response.status_code == 200:
@@ -39,6 +57,32 @@ def exchange_code_for_tokens(auth_code):
     else:
         raise Exception(f"Failed to exchange code: {response.text}")
 
+def start_auth_flow():
+    """
+    Start the authentication flow with a local Flask server.
+    """
+    global auth_code
+
+    # Start Flask app in a separate thread
+    def run_flask():
+        app.run(port=8080, debug=False)
+
+    Thread(target=run_flask).start()
+
+    # Open the authentication URL in the browser
+    print("Visit this URL to authenticate:")
+    print(get_auth_code_url())
+
+    # Wait for the auth code to be set
+    while auth_code is None:
+        pass
+
+    # Exchange the code for tokens
+    tokens = exchange_code_for_tokens()
+    print("Access Token:", tokens.get("access_token"))
+    print("Refresh Token:", tokens.get("refresh_token"))
+
+# === Token Management ===
 def refresh_access_token():
     """
     Refresh the access token using the refresh token.
@@ -56,9 +100,10 @@ def refresh_access_token():
     else:
         raise Exception(f"Failed to refresh access token: {response.text}")
 
+# === Nest Camera Operations ===
 def get_camera_snapshot(access_token):
     """
-    Fetches a snapshot from the Nest camera.
+    Fetch a snapshot from the Nest camera.
     """
     url = f"{NEST_API_URL}/enterprises/{CONFIG['NEST']['project_id']}/devices/{CONFIG['NEST']['device_id']}:executeCommand"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -75,14 +120,14 @@ def get_camera_snapshot(access_token):
 
 def display_snapshot(image_bytes):
     """
-    Displays the fetched snapshot using Pillow.
+    Display the fetched snapshot using Pillow.
     """
     image = Image.open(BytesIO(image_bytes))
     image.show()
 
 def fetch_and_display_snapshot():
     """
-    Continuously fetches and displays snapshots at regular intervals.
+    Continuously fetch and display snapshots at regular intervals.
     """
     try:
         while True:
@@ -112,17 +157,3 @@ def list_nest_devices(access_token):
             print("No devices found.")
     else:
         print(f"Error fetching devices: {response.text}")
-
-def initiate_auth_flow():
-    """
-    Initiates the OAuth authentication flow for Nest API.
-    """
-    print("Visit the following URL to authenticate:")
-    print(get_auth_code_url())
-    auth_code = input("Enter the authorization code from the URL: ").strip()
-    try:
-        tokens = exchange_code_for_tokens(auth_code)
-        print("Access Token:", tokens['access_token'])
-        print("Refresh Token:", tokens['refresh_token'])
-    except Exception as e:
-        print(f"Error during authentication: {e}")
