@@ -9,6 +9,7 @@ import logging
 import qrcode  # For generating QR codes
 import os  # For launching VLC/FFmpeg
 from module_config import load_config
+import subprocess
 
 # Load configuration
 CONFIG = load_config()
@@ -184,28 +185,71 @@ def get_camera_live_stream(access_token):
 
 def play_live_stream(stream_url):
     """
-    Play the live stream using VLC or FFmpeg.
+    Play the live stream using VLC or fallback to FFmpeg.
     """
     try:
-        logging.info(f"Playing live stream: {stream_url}")
-        # Option 1: Use VLC
-        os.system(f"vlc {stream_url}")
+        logging.info(f"Attempting to play live stream: {stream_url}")
+        
+        # Try using VLC first
+        vlc_cmd = [
+            "vlc", stream_url,
+            "--rtsp-tcp",  # Use TCP for RTSP
+            "--no-video-deco", "--no-video-title-show",  # Clean playback
+        ]
+        logging.info(f"Launching VLC with command: {' '.join(vlc_cmd)}")
+        subprocess.run(vlc_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        logging.error(f"VLC failed to open the RTSP stream. Error: {e}")
+        logging.info("Attempting fallback to FFmpeg...")
 
-        # Option 2: Uncomment to save the stream using FFmpeg
-        # os.system(f'ffmpeg -i "{stream_url}" -c copy output.mp4')
-    except Exception as e:
-        logging.error(f"Failed to play the live stream: {e}")
+        # Fallback: Use FFmpeg
+        try:
+            ffmpeg_cmd = [
+                "ffmpeg", "-i", stream_url,
+                "-c", "copy", "output.mp4",  # Save the stream to a file
+            ]
+            logging.info(f"Launching FFmpeg with command: {' '.join(ffmpeg_cmd)}")
+            subprocess.run(ffmpeg_cmd, check=True)
+        except subprocess.CalledProcessError as ffmpeg_error:
+            logging.error(f"FFmpeg also failed to open the RTSP stream. Error: {ffmpeg_error}")
+            logging.info("Ensure that the RTSP URL is valid and accessible.")
+        except FileNotFoundError:
+            logging.error("FFmpeg is not installed on the system. Please install it to use this fallback.")
+    except FileNotFoundError:
+        logging.error("VLC is not installed on the system. Please install it to play RTSP streams.")
+
 
 def handle_nest_camera_live_stream():
     """
     Fetch and display the live stream from the Nest camera.
     """
     try:
-        access_token = get_access_token()
-        stream_url = get_camera_live_stream(access_token)
+        access_token = CONFIG['NEST'].get("access_token")
+        if not access_token:
+            raise ValueError("Access token is missing.")
+
+        # Get the live stream URL
+        device_id = CONFIG['NEST']['device_id']
+        url = f"https://smartdevicemanagement.googleapis.com/v1/{device_id}:executeCommand"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {}}
+
+        logging.info(f"Sending request to fetch live stream: {url}")
+        response = requests.post(url, json=payload, headers=headers)
+        response.raise_for_status()
+
+        stream_url = response.json().get("results", {}).get("streamUrls", {}).get("rtspUrl")
+        if not stream_url:
+            raise ValueError("Failed to retrieve RTSP URL from the response.")
+
+        logging.info(f"RTSP Stream URL: {stream_url}")
         play_live_stream(stream_url)
-    except Exception as e:
-        logging.error(f"Failed to fetch and display live stream: {e}")
+    except requests.RequestException as req_err:
+        logging.error(f"Failed to fetch the live stream due to a request error: {req_err}")
+    except ValueError as val_err:
+        logging.error(f"Error with live stream: {val_err}")
+    except Exception as gen_err:
+        logging.error(f"An unexpected error occurred: {gen_err}")
 
 # === Device Management ===
 def list_nest_devices(access_token):
