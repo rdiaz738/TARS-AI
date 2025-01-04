@@ -81,7 +81,7 @@ def start_auth_flow():
 
     def run_flask():
         try:
-            app.run(port=8080, debug=False)
+            app.run(host="0.0.0.0", port=8080, debug=False)
         except Exception as e:
             print(f"[ERROR] Flask server failed to start: {e}")
 
