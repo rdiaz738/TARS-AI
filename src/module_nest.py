@@ -1,16 +1,16 @@
 import requests
 from flask import Flask, request
-from threading import Thread
+from threading import Thread, Event
 from urllib.parse import urlencode
 from PIL import Image, ImageTk
 from io import BytesIO
+import tkinter as tk
 import logging
 import qrcode  # For generating QR codes
 import os  # For launching VLC/FFmpeg
 from module_config import load_config
 import subprocess
-import tkinter as tk
-import time  # Required for sleep in the extension thread
+import time
 
 # Load configuration
 CONFIG = load_config()
@@ -18,13 +18,10 @@ NEST_API_URL = "https://smartdevicemanagement.googleapis.com/v1"
 app = Flask(__name__)  # Flask app for OAuth callback
 auth_code = None  # Global variable to store the authorization code
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
-print(f"Using Client ID: {CONFIG['NEST']['client_id']}")
+logging.info(f"Using Client ID: {CONFIG['NEST']['client_id']}")
 
-# === Global Variables for QR Code Window and Stream Extension ===
-qr_window = None  # Global variable to reference the QR code window
-current_stream_extension_token = None  # To store the current stream extension token
-stream_extension_thread = None  # To reference the extension thread
-stream_extension_active = False  # Flag to control the extension thread
+# Event to signal QR code window to close
+qr_closed_event = Event()
 
 # === Helper Functions ===
 def log_error_and_raise(message, response=None):
@@ -46,55 +43,62 @@ def get_auth_code_url():
         "client_id": CONFIG['NEST']['client_id'],
         "redirect_uri": CONFIG['NEST']["redirect_url"],
         "response_type": "code",
-        "scope": "https://www.googleapis.com/auth/sdm.service"
+        "scope": "https://www.googleapis.com/auth/sdm.service",
+        "access_type": "offline",
+        "prompt": "consent"
     }
-    return f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
+    return f"https://nestservices.google.com/partnerconnections/{CONFIG['NEST']['project_id']}/auth?{urlencode(params)}"
 
 @app.route("/callback")
 def callback():
     """
     Handle the OAuth callback and extract the authorization code.
     """
-    global auth_code, qr_window
+    global auth_code
     auth_code = request.args.get("code")
-    logging.info("Authorization successful! Closing QR code window.")
-    
-    # Close the Tkinter QR code window if it's open
-    if qr_window:
-        qr_window.quit()
-        qr_window = None
-    
+    logging.info("Authorization code received.")
+    qr_closed_event.set()  # Signal to close the QR code window
     return "Authorization successful! You can close this tab."
 
 def generate_qr_code(auth_url):
     """
-    Generate and display a QR code in a Tkinter window.
+    Generate the QR code image.
     """
-    global qr_window
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(auth_url)
     qr.make(fit=True)
     img = qr.make_image(fill='black', back_color='white')
+    return img
 
-    # Initialize Tkinter window
-    qr_window = tk.Tk()
-    qr_window.title("Scan QR Code for Authentication")
+def display_qr_code(img):
+    """
+    Display the QR code using Tkinter and close it upon authentication.
+    """
+    def close_window():
+        root.destroy()
+
+    root = tk.Tk()
+    root.title("Scan QR Code to Authenticate")
 
     # Convert PIL image to Tkinter PhotoImage
     tk_img = ImageTk.PhotoImage(img)
-    label = tk.Label(qr_window, image=tk_img)
+    label = tk.Label(root, image=tk_img)
     label.image = tk_img  # Keep a reference to avoid garbage collection
-    label.pack()
+    label.pack(padx=20, pady=20)
 
-    # Center the window
-    qr_window.update_idletasks()
-    width = qr_window.winfo_width()
-    height = qr_window.winfo_height()
-    x = (qr_window.winfo_screenwidth() // 2) - (width // 2)
-    y = (qr_window.winfo_screenheight() // 2) - (height // 2)
-    qr_window.geometry(f'{width}x{height}+{x}+{y}')
-    
-    # Do NOT start mainloop here; it will be started in the main thread
+    # Instruction Label
+    instruction = tk.Label(root, text="Scan this QR code with your device to authenticate.")
+    instruction.pack(pady=(0, 20))
+
+    # Periodically check if the QR code should be closed
+    def check_event():
+        if qr_closed_event.is_set():
+            close_window()
+        else:
+            root.after(1000, check_event)  # Check every second
+
+    root.after(1000, check_event)
+    root.mainloop()
 
 def exchange_code_for_tokens():
     """
@@ -114,33 +118,66 @@ def exchange_code_for_tokens():
     }
     response = requests.post(url, data=payload)
     if response.status_code == 200:
-        return response.json()
+        tokens = response.json()
+        logging.info("Access and refresh tokens obtained successfully.")
+        return tokens
     else:
-        log_error_and_raise("Failed to exchange code", response)
+        log_error_and_raise("Failed to exchange code for tokens", response)
+
+def refresh_access_token():
+    """
+    Refresh the access token using the refresh token.
+    """
+    refresh_token = CONFIG['NEST'].get('refresh_token')
+    if not refresh_token:
+        log_error_and_raise("No refresh token available.")
+
+    url = "https://oauth2.googleapis.com/token"
+    payload = {
+        "client_id": CONFIG['NEST']['client_id'],
+        "client_secret": CONFIG['NEST']['client_secret'],
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token"
+    }
+    response = requests.post(url, data=payload)
+    if response.status_code == 200:
+        tokens = response.json()
+        CONFIG['NEST']['access_token'] = tokens.get('access_token')
+        if tokens.get('refresh_token'):
+            CONFIG['NEST']['refresh_token'] = tokens.get('refresh_token')
+        logging.info("Access token refreshed successfully.")
+        return tokens.get('access_token')
+    else:
+        log_error_and_raise("Failed to refresh access token", response)
+
+def start_flask_app():
+    """
+    Start the Flask app to handle OAuth callback.
+    """
+    try:
+        app.run(host="0.0.0.0", port=8080, debug=False)
+    except Exception as e:
+        logging.error(f"Flask server failed to start: {e}")
 
 def start_auth_flow():
     """
-    Start the authentication flow with a local Flask server.
+    Start the authentication flow with a local Flask server and display the QR code.
     """
     global auth_code
 
-    def run_flask():
-        try:
-            app.run(host="0.0.0.0", port=8080, debug=False)
-        except Exception as e:
-            logging.error(f"Flask server failed to start: {e}")
-
-    # Start Flask server in a separate daemon thread
-    flask_thread = Thread(target=run_flask, daemon=True)
+    # Start Flask in a separate daemon thread
+    flask_thread = Thread(target=start_flask_app, daemon=True)
     flask_thread.start()
 
+    # Generate the authorization URL
     auth_url = get_auth_code_url()
     logging.info(f"Visit this URL to authenticate:\n{auth_url}")
-    generate_qr_code(auth_url)
+    qr_image = generate_qr_code(auth_url)
 
-    while auth_code is None:
-        time.sleep(1)  # Prevent busy waiting
+    # Display the QR code in the main thread (Tkinter's mainloop must run here)
+    display_qr_code(qr_image)
 
+    # After mainloop exits (authentication complete), exchange code for tokens
     tokens = exchange_code_for_tokens()
     access_token = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
@@ -148,21 +185,10 @@ def start_auth_flow():
     if refresh_token:
         CONFIG['NEST']['refresh_token'] = refresh_token
 
+    # Make the initial devices.list API call to complete authorization
     devices = list_nest_devices(access_token)
     logging.info("Access Token stored successfully.")
     return devices
-
-# === Token Management ===
-def get_access_token():
-    """
-    Retrieve the access token from the configuration.
-    """
-    access_token = CONFIG['NEST'].get('access_token')
-    logging.info(f"ACCESS TOKEN: {access_token}")
-    if not access_token:
-        logging.error("No access token found in configuration.")
-        raise Exception("Missing access token.")
-    return access_token
 
 # === Camera Snapshot and Live Stream ===
 def get_camera_snapshot(access_token):
@@ -288,11 +314,11 @@ def extend_stream():
         try:
             # Wait for 4 minutes before extending (to ensure it's before the 5-minute expiry)
             time.sleep(240)  # 4 minutes in seconds
-            
+
             if not current_stream_extension_token:
                 logging.warning("No stream extension token available to extend the stream.")
                 continue
-            
+
             access_token = get_access_token()
             device_id = CONFIG['NEST']['device_id']
             project_id = CONFIG['NEST']['project_id']
@@ -381,4 +407,17 @@ def validate_camera_device(devices, device_id, trait="sdm.devices.traits.CameraE
         if device['name'] == device_id and trait in device.get('traits', {}):
             return True
     return False
- 
+
+# === Entry Point ===
+def run_authentication():
+    """
+    Entry point to start the authentication flow.
+    This function can be called from module_main.py in a separate thread.
+    """
+    try:
+        start_auth_flow()
+    except Exception as e:
+        logging.error(f"Authentication flow failed: {e}")
+
+# Note: Do NOT call start_auth_flow() here to prevent blocking when importing this module.
+# Instead, call run_authentication() from module_main.py in a separate thread.
