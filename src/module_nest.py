@@ -43,9 +43,7 @@ def get_auth_code_url():
         "client_id": CONFIG['NEST']['client_id'],
         "redirect_uri": CONFIG['NEST']["redirect_url"],
         "response_type": "code",
-        "scope": "https://www.googleapis.com/auth/sdm.service",
-        "access_type": "offline",
-        "prompt": "consent"
+        "scope": "https://www.googleapis.com/auth/sdm.service"
     }
     return f"https://nestservices.google.com/partnerconnections/{CONFIG['NEST']['project_id']}/auth?{urlencode(params)}"
 
