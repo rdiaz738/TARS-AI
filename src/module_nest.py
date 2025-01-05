@@ -208,7 +208,7 @@ def get_camera_live_stream(access_token):
     url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
     headers = {"Authorization": f"Bearer {access_token}"}
     payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {}}
-    logging.info(f"URL: {url}")
+    # logging.info(f"URL: {url}")
 
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code == 200:
@@ -227,7 +227,7 @@ def play_live_stream(stream_url):
     Play the live stream using FFplay or fallback to saving the stream.
     """
     try:
-        logging.info(f"Attempting to play live stream with FFplay: {stream_url}")
+        # logging.info(f"Attempting to play live stream with FFplay: {stream_url}")
         ffplay_cmd = [
             "ffplay", "-rtsp_transport", "tcp", stream_url
         ]
@@ -264,7 +264,7 @@ def handle_nest_camera_live_stream():
 
         # Get the live stream URL
         stream_url = get_camera_live_stream(access_token)
-        logging.info(f"RTSP Stream URL: {stream_url}")
+        # logging.info(f"RTSP Stream URL: {stream_url}")
         play_live_stream(stream_url)
 
         # Start the stream extension thread
