@@ -28,7 +28,7 @@ from module_engine import check_for_module
 from module_tts import generate_tts_audio
 from module_vision import get_image_caption_from_base64
 from module_stt import STTManager
-from module_nest import start_auth_flow, get_access_token,validate_camera_device, get_camera_snapshot, display_snapshot, get_camera_live_stream, play_live_stream, list_nest_devices
+from module_nest import start_auth_flow
 
 # === Constants and Globals ===
 character_manager = None
@@ -41,36 +41,6 @@ CONFIG = load_config()
 stop_event = threading.Event()
 executor = concurrent.futures.ProcessPoolExecutor(max_workers=4)
 
-# === Nest Camera Authentication ===
-def start_nest_auth_flow():
-    """
-    Start the OAuth flow for Nest Camera authentication.
-    """
-    print("Starting Nest authentication flow...")
-    start_auth_flow()
-
-# === Nest Camera Snapshot Handling ===
-def handle_nest_camera_snapshot():
-    """
-    Fetch and display a snapshot from the Nest camera.
-    """
-    try:
-        print("[INFO] Fetching access token...")
-        access_token = get_access_token()
-
-        print("[INFO] Validating device traits...")
-        devices = list_nest_devices(access_token)
-        if not validate_camera_device(devices, CONFIG['NEST']['device_id']):
-            print("[ERROR] Device ID does not correspond to a camera.")
-            return
-
-        print("[INFO] Fetching snapshot...")
-        image_bytes = get_camera_snapshot(access_token)
-
-        print("[INFO] Displaying snapshot...")
-        display_snapshot(image_bytes)
-    except Exception as e:
-        print(f"[ERROR] Failed to display snapshot: {e}")
 
 # === Threads ===
 def start_bt_controller_thread():
@@ -83,40 +53,7 @@ def start_bt_controller_thread():
             start_controls()
     except Exception as e:
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] ERROR: Error in BT Controller thread: {e}")
-# === Get Nest Devices ===
-def fetch_nest_devices():
-    """
-    Fetch and list available Nest devices.
-    """
-    if CONFIG["NEST"].getboolean("use_nest"):
-        print("Fetching available Nest devices...")
-        access_token = get_access_token()
-        if access_token:
-            list_nest_devices(access_token)
-    else:
-        print("Nest Camera functionality is disabled in the configuration.")
-# === Display nest live ===
-def handle_nest_camera_live_stream():
-    """
-    Fetch and display the live stream from the Nest camera.
-    """
-    try:
-        print("[INFO] Fetching access token...")
-        access_token = get_access_token()
 
-        print("[INFO] Validating device traits...")
-        devices = list_nest_devices(access_token)
-        if not validate_camera_device(devices, CONFIG['NEST']['device_id']):
-            print("[ERROR] Device ID does not correspond to a camera.")
-            return
-
-        print("[INFO] Fetching live stream URL...")
-        stream_url = get_camera_live_stream(access_token)
-
-        print("[INFO] Displaying live stream...")
-        play_live_stream(stream_url)
-    except Exception as e:
-        print(f"[ERROR] Failed to display live stream: {e}")
 # === Core Functions ===
 def extract_text(json_response, picture):
     """
@@ -456,4 +393,4 @@ def initialize_managers(mem_manager, char_manager, stt_mgr):
     memory_manager = mem_manager
     character_manager = char_manager
     stt_manager = stt_mgr
-start_nest_auth_flow()
+start_auth_flow()
