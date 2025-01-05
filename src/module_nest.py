@@ -185,12 +185,18 @@ def get_camera_live_stream(access_token):
 
 def play_live_stream(stream_url):
     """
-    Play the live stream using FFplay or fallback to saving the stream.
+    Play the live stream using FFplay or fallback to saving the stream with FFmpeg, using hardware acceleration.
     """
     try:
         logging.info(f"Attempting to play live stream with FFplay: {stream_url}")
+        # FFplay with hardware acceleration
         ffplay_cmd = [
-            "ffplay", "-rtsp_transport", "tcp", stream_url
+            "ffplay",
+            "-rtsp_transport", "tcp",     # Use TCP for RTSP
+            "-fflags", "nobuffer",        # Reduce buffering
+            "-flags", "low_delay",        # Low-latency playback
+            "-hwaccel", "auto",           # Automatically select hardware acceleration
+            stream_url
         ]
         subprocess.run(ffplay_cmd, check=True)
     except subprocess.CalledProcessError as e:
@@ -199,9 +205,17 @@ def play_live_stream(stream_url):
 
         try:
             output_file = "nest_stream.mp4"
+            # FFmpeg with hardware acceleration
             ffmpeg_cmd = [
-                "ffmpeg", "-rtsp_transport", "tcp", "-i", stream_url,
-                "-c", "copy", output_file
+                "ffmpeg",
+                "-rtsp_transport", "tcp",  # Use TCP for RTSP
+                "-hwaccel", "auto",        # Enable hardware acceleration
+                "-i", stream_url,          # Input stream URL
+                "-c:v", "h264_v4l2m2m",    # Example for Raspberry Pi hardware decoding
+                "-c:a", "aac",             # Audio codec
+                "-b:v", "500k",            # Adjust video bitrate for optimization
+                "-preset", "ultrafast",    # Use an ultrafast preset for low latency
+                output_file
             ]
             logging.info(f"Saving stream to {output_file} with command: {' '.join(ffmpeg_cmd)}")
             subprocess.run(ffmpeg_cmd, check=True)
@@ -228,7 +242,14 @@ def handle_nest_camera_live_stream():
         device_id = CONFIG['NEST']['device_id']
         url = f"https://smartdevicemanagement.googleapis.com/v1/{device_id}:executeCommand"
         headers = {"Authorization": f"Bearer {access_token}"}
-        payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {}}
+        payload = {
+            "command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream",
+            "params": {
+                "streamFormat": "RTSP",
+                "resolution": {"width": 640, "height": 480},  # Lower resolution for less lag
+                "frameRate": 15                              # Lower frame rate for smoother playback
+            }
+        }
 
         logging.info(f"Sending request to fetch live stream: {url}")
         response = requests.post(url, json=payload, headers=headers)
