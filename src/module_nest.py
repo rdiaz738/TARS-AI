@@ -61,6 +61,7 @@ def callback():
     qr_closed_event.set()  # Signal to close the QR code window
     return "Authorization successful! You can close this tab."
 
+
 def generate_qr_code(auth_url):
     """
     Generate the QR code image.
@@ -99,6 +100,7 @@ def display_qr_code(img):
 
     root.after(1000, check_event)
     root.mainloop()
+
 def exchange_code_for_tokens():
     """
     Exchange the authorization code for access and refresh tokens.
@@ -130,18 +132,17 @@ def start_flask_app():
     except Exception as e:
         logging.error(f"Flask server failed to start: {e}")
 
-
 def start_auth_flow():
     """
-    Start the authentication flow with a local Flask server.
+    Start the authentication flow with a local Flask server and display the QR code.
     """
     global auth_code
- 
 
-    # Start Flask server in a separate daemon thread
+    # Start Flask in a separate daemon thread
     flask_thread = Thread(target=start_flask_app, daemon=True)
     flask_thread.start()
 
+    # Generate the authorization URL
     auth_url = get_auth_code_url()
     logging.info(f"Visit this URL to authenticate:\n{auth_url}")
     qr_image = generate_qr_code(auth_url)
@@ -153,6 +154,7 @@ def start_auth_flow():
     # Wait until the QR code window is closed (authentication is complete)
     qr_closed_event.wait()
 
+    # Exchange the authorization code for tokens
     tokens = exchange_code_for_tokens()
     access_token = tokens.get("access_token")
     refresh_token = tokens.get("refresh_token")
@@ -160,6 +162,7 @@ def start_auth_flow():
     if refresh_token:
         CONFIG['NEST']['refresh_token'] = refresh_token
 
+    # Make the initial devices.list API call to complete authorization
     devices = list_nest_devices(access_token)
     logging.info("Access Token stored successfully.")
     return devices
