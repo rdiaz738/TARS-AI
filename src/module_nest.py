@@ -10,20 +10,21 @@ import qrcode  # For generating QR codes
 import os  # For launching VLC/FFmpeg
 from module_config import load_config
 import subprocess
+import time  # Added for handling live stream extension
 
 # Load configuration
 CONFIG = load_config()
 NEST_API_URL = "https://smartdevicemanagement.googleapis.com/v1"
 app = Flask(__name__)  # Flask app for OAuth callback
 auth_code = None  # Global variable to store the authorization code
+current_stream_url = None  # To track the live stream URL
+qr_image = None  # Global variable for the QR code image
+
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
 print(f"Using Client ID: {CONFIG['NEST']['client_id']}")
 
 # === Helper Functions ===
 def log_error_and_raise(message, response=None):
-    """
-    Log an error message and raise an exception.
-    """
     if response:
         logging.error(f"{message} - Status: {response.status_code}, Response: {response.text}")
     else:
@@ -32,9 +33,6 @@ def log_error_and_raise(message, response=None):
 
 # === Authentication Flow ===
 def get_auth_code_url():
-    """
-    Generate the Google OAuth 2.0 authorization URL.
-    """
     params = {
         "client_id": CONFIG['NEST']['client_id'],
         "redirect_uri": CONFIG['NEST']["redirect_url"],
@@ -45,27 +43,22 @@ def get_auth_code_url():
 
 @app.route("/callback")
 def callback():
-    """
-    Handle the OAuth callback and extract the authorization code.
-    """
-    global auth_code
+    global auth_code, qr_image
     auth_code = request.args.get("code")
+    if qr_image:
+        qr_image.close()  # Close the QR code image
+        qr_image = None
     return "Authorization successful! You can close this tab."
 
 def generate_qr_code(auth_url):
-    """
-    Generate a QR code for the authorization URL.
-    """
+    global qr_image
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(auth_url)
     qr.make(fit=True)
-    img = qr.make_image(fill='black', back_color='white')
-    img.show()
+    qr_image = qr.make_image(fill='black', back_color='white')
+    qr_image.show()
 
 def exchange_code_for_tokens():
-    """
-    Exchange the authorization code for access and refresh tokens.
-    """
     global auth_code
     if not auth_code:
         raise Exception("No authorization code found. Ensure the authentication flow is completed.")
@@ -85,9 +78,6 @@ def exchange_code_for_tokens():
         log_error_and_raise("Failed to exchange code", response)
 
 def start_auth_flow():
-    """
-    Start the authentication flow with a local Flask server.
-    """
     global auth_code
 
     def run_flask():
@@ -118,9 +108,6 @@ def start_auth_flow():
 
 # === Token Management ===
 def get_access_token():
-    """
-    Retrieve the access token from the configuration.
-    """
     access_token = CONFIG['NEST'].get('access_token')
     logging.info(f"ACCESS TOKEN: {access_token}")
     if not access_token:
@@ -128,11 +115,8 @@ def get_access_token():
         raise Exception("Missing access token.")
     return access_token
 
-# === Camera Snapshot and Live Stream ===
+# === Camera Snapshot ===
 def get_camera_snapshot(access_token):
-    """
-    Fetch a snapshot from the Nest camera.
-    """
     url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
     headers = {"Authorization": f"Bearer {access_token}"}
     payload = {"command": "sdm.devices.commands.CameraEventImage.GenerateImage", "params": {}}
@@ -147,16 +131,10 @@ def get_camera_snapshot(access_token):
         log_error_and_raise("Failed to fetch snapshot", response)
 
 def display_snapshot(image_bytes):
-    """
-    Display the fetched snapshot using Pillow.
-    """
     image = Image.open(BytesIO(image_bytes))
     image.show()
 
 def fetch_and_display_snapshot():
-    """
-    Fetch and display a snapshot from the Nest camera.
-    """
     try:
         access_token = get_access_token()
         image_bytes = get_camera_snapshot(access_token)
@@ -164,94 +142,74 @@ def fetch_and_display_snapshot():
     except Exception as e:
         logging.error(f"Failed to fetch and display snapshot: {e}")
 
+# === Live Stream Management ===
 def get_camera_live_stream(access_token):
-    """
-    Fetch a live stream URL from the Nest camera.
-    """
     url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
     headers = {"Authorization": f"Bearer {access_token}"}
     payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {}}
-    logging.info(f"URL: {url}")
-
     response = requests.post(url, json=payload, headers=headers)
     if response.status_code == 200:
-        stream_url = response.json().get("results", {}).get("streamUrls", {}).get("rtspUrl")
-        if stream_url:
-            return stream_url
-        else:
-            raise Exception("Live stream URL not found.")
+        return response.json()
     else:
         log_error_and_raise("Failed to fetch live stream", response)
 
-def play_live_stream(stream_url):
-    """
-    Play the live stream using FFplay or fallback to saving the stream.
-    """
+def extend_rtsp_stream(access_token, stream_extension_token):
+    url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    payload = {
+        "command": "sdm.devices.commands.CameraLiveStream.ExtendRtspStream",
+        "params": {"streamExtensionToken": stream_extension_token}
+    }
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        return response.json()
+    else:
+        log_error_and_raise("Failed to extend RTSP stream", response)
+
+def stop_rtsp_stream(access_token):
+    global current_stream_url
+    url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    payload = {"command": "sdm.devices.commands.CameraLiveStream.StopRtspStream"}
+    response = requests.post(url, json=payload, headers=headers)
+    if response.status_code == 200:
+        logging.info("RTSP stream stopped successfully.")
+        current_stream_url = None
+    else:
+        log_error_and_raise("Failed to stop RTSP stream", response)
+
+def play_live_stream(stream_url, stream_extension_token):
+    global current_stream_url
+    current_stream_url = stream_url
+    logging.info(f"Playing live stream: {stream_url}")
     try:
-        logging.info(f"Attempting to play live stream with FFplay: {stream_url}")
-        ffplay_cmd = [
-            "ffplay", "-rtsp_transport", "tcp", stream_url
-        ]
-        subprocess.run(ffplay_cmd, check=True)
-    except subprocess.CalledProcessError as e:
-        logging.error(f"FFplay failed to open the RTSP stream. Error: {e}")
-        logging.info("Attempting to save the stream as a file instead.")
-
-        try:
-            output_file = "nest_stream.mp4"
-            ffmpeg_cmd = [
-                "ffmpeg", "-rtsp_transport", "tcp", "-i", stream_url,
-                "-c", "copy", output_file
-            ]
-            logging.info(f"Saving stream to {output_file} with command: {' '.join(ffmpeg_cmd)}")
-            subprocess.run(ffmpeg_cmd, check=True)
-            logging.info(f"Stream saved to {output_file}")
-        except subprocess.CalledProcessError as ffmpeg_error:
-            logging.error(f"FFmpeg also failed to save the RTSP stream. Error: {ffmpeg_error}")
-        except FileNotFoundError:
-            logging.error("FFmpeg is not installed. Please install it to use this functionality.")
-    except FileNotFoundError:
-        logging.error("FFplay is not installed. Please install FFmpeg to use this functionality.")
-
-
+        ffplay_cmd = ["ffplay", "-rtsp_transport", "tcp", stream_url]
+        process = subprocess.Popen(ffplay_cmd)
+        while process.poll() is None:
+            logging.info("Extending live stream...")
+            try:
+                response = extend_rtsp_stream(get_access_token(), stream_extension_token)
+                stream_extension_token = response["results"]["streamExtensionToken"]
+                time.sleep(240)  # Extend before the 5-minute expiration
+            except Exception as e:
+                logging.error(f"Failed to extend stream: {e}")
+    except KeyboardInterrupt:
+        logging.info("Stopping live stream...")
+        stop_rtsp_stream(get_access_token())
+        process.terminate()
 
 def handle_nest_camera_live_stream():
-    """
-    Fetch and display the live stream from the Nest camera.
-    """
     try:
-        access_token = CONFIG['NEST'].get("access_token")
-        if not access_token:
-            raise ValueError("Access token is missing.")
-
-        # Get the live stream URL
-        device_id = CONFIG['NEST']['device_id']
-        url = f"https://smartdevicemanagement.googleapis.com/v1/{device_id}:executeCommand"
-        headers = {"Authorization": f"Bearer {access_token}"}
-        payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {}}
-
-        logging.info(f"Sending request to fetch live stream: {url}")
-        response = requests.post(url, json=payload, headers=headers)
-        response.raise_for_status()
-
-        stream_url = response.json().get("results", {}).get("streamUrls", {}).get("rtspUrl")
-        if not stream_url:
-            raise ValueError("Failed to retrieve RTSP URL from the response.")
-
-        logging.info(f"RTSP Stream URL: {stream_url}")
-        play_live_stream(stream_url)
-    except requests.RequestException as req_err:
-        logging.error(f"Failed to fetch the live stream due to a request error: {req_err}")
-    except ValueError as val_err:
-        logging.error(f"Error with live stream: {val_err}")
-    except Exception as gen_err:
-        logging.error(f"An unexpected error occurred: {gen_err}")
+        access_token = get_access_token()
+        response = get_camera_live_stream(access_token)
+        stream_url = response["results"]["streamUrls"]["rtspUrl"]
+        stream_extension_token = response["results"]["streamExtensionToken"]
+        play_live_stream(stream_url, stream_extension_token)
+    except Exception as e:
+        logging.error(f"Failed to handle the live stream: {e}")
 
 # === Device Management ===
 def list_nest_devices(access_token):
-    """
-    List all devices associated with the Nest account and return them.
-    """
     url = f"{NEST_API_URL}/enterprises/{CONFIG['NEST']['project_id']}/devices"
     headers = {"Authorization": f"Bearer {access_token}"}
     response = requests.get(url, headers=headers)
@@ -267,12 +225,3 @@ def list_nest_devices(access_token):
             return []
     else:
         log_error_and_raise("Failed to fetch devices", response)
-
-def validate_camera_device(devices, device_id, trait="sdm.devices.traits.CameraEventImage"):
-    """
-    Validate that the provided device ID corresponds to a camera and supports the required trait.
-    """
-    for device in devices:
-        if device['name'] == device_id and trait in device.get('traits', {}):
-            return True
-    return False
