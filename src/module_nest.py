@@ -2,16 +2,14 @@ import requests
 from flask import Flask, request
 from threading import Thread
 from urllib.parse import urlencode
-from PIL import Image
+from PIL import Image, ImageTk
 from io import BytesIO
-import webbrowser
 import logging
 import qrcode  # For generating QR codes
 import os  # For launching VLC/FFmpeg
 from module_config import load_config
 import subprocess
 import tkinter as tk
-from PIL import ImageTk
 import time  # Required for sleep in the extension thread
 
 # Load configuration
@@ -19,13 +17,14 @@ CONFIG = load_config()
 NEST_API_URL = "https://smartdevicemanagement.googleapis.com/v1"
 app = Flask(__name__)  # Flask app for OAuth callback
 auth_code = None  # Global variable to store the authorization code
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
+print(f"Using Client ID: {CONFIG['NEST']['client_id']}")
+
+# === Global Variables for QR Code Window and Stream Extension ===
 qr_window = None  # Global variable to reference the QR code window
 current_stream_extension_token = None  # To store the current stream extension token
 stream_extension_thread = None  # To reference the extension thread
 stream_extension_active = False  # Flag to control the extension thread
-
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
-print(f"Using Client ID: {CONFIG['NEST']['client_id']}")
 
 # === Helper Functions ===
 def log_error_and_raise(message, response=None):
@@ -67,7 +66,6 @@ def callback():
     
     return "Authorization successful! You can close this tab."
 
-
 def generate_qr_code(auth_url):
     """
     Generate and display a QR code in a Tkinter window.
@@ -95,10 +93,8 @@ def generate_qr_code(auth_url):
     x = (qr_window.winfo_screenwidth() // 2) - (width // 2)
     y = (qr_window.winfo_screenheight() // 2) - (height // 2)
     qr_window.geometry(f'{width}x{height}+{x}+{y}')
-
-    # Run Tkinter in a separate thread to allow interaction
-    Thread(target=qr_window.mainloop, daemon=True).start()
-
+    
+    # Do NOT start mainloop here; it will be started in the main thread
 
 def exchange_code_for_tokens():
     """
@@ -134,7 +130,9 @@ def start_auth_flow():
         except Exception as e:
             logging.error(f"Flask server failed to start: {e}")
 
-    Thread(target=run_flask, daemon=True).start()
+    # Start Flask server in a separate daemon thread
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
 
     auth_url = get_auth_code_url()
     logging.info(f"Visit this URL to authenticate:\n{auth_url}")
@@ -153,7 +151,6 @@ def start_auth_flow():
     devices = list_nest_devices(access_token)
     logging.info("Access Token stored successfully.")
     return devices
-
 
 # === Token Management ===
 def get_access_token():
@@ -225,7 +222,6 @@ def get_camera_live_stream(access_token):
     else:
         log_error_and_raise("Failed to fetch live stream", response)
 
-
 def play_live_stream(stream_url):
     """
     Play the live stream using FFplay or fallback to saving the stream.
@@ -255,6 +251,33 @@ def play_live_stream(stream_url):
             logging.error("FFmpeg is not installed. Please install it to use this functionality.")
     except FileNotFoundError:
         logging.error("FFplay is not installed. Please install FFmpeg to use this functionality.")
+
+def handle_nest_camera_live_stream():
+    """
+    Fetch and display the live stream from the Nest camera.
+    """
+    global stream_extension_thread, stream_extension_active
+    try:
+        access_token = CONFIG['NEST'].get("access_token")
+        if not access_token:
+            raise ValueError("Access token is missing.")
+
+        # Get the live stream URL
+        stream_url = get_camera_live_stream(access_token)
+        logging.info(f"RTSP Stream URL: {stream_url}")
+        play_live_stream(stream_url)
+
+        # Start the stream extension thread
+        if not stream_extension_active:
+            stream_extension_active = True
+            stream_extension_thread = Thread(target=extend_stream, daemon=True)
+            stream_extension_thread.start()
+    except requests.RequestException as req_err:
+        logging.error(f"Failed to fetch the live stream due to a request error: {req_err}")
+    except ValueError as val_err:
+        logging.error(f"Error with live stream: {val_err}")
+    except Exception as gen_err:
+        logging.error(f"An unexpected error occurred: {gen_err}")
 
 def extend_stream():
     """
@@ -296,34 +319,6 @@ def extend_stream():
         except Exception as e:
             logging.error(f"Error while extending the stream: {e}")
 
-
-def handle_nest_camera_live_stream():
-    """
-    Fetch and display the live stream from the Nest camera.
-    """
-    global stream_extension_thread, stream_extension_active
-    try:
-        access_token = CONFIG['NEST'].get("access_token")
-        if not access_token:
-            raise ValueError("Access token is missing.")
-
-        # Get the live stream URL
-        stream_url = get_camera_live_stream(access_token)
-        logging.info(f"RTSP Stream URL: {stream_url}")
-        play_live_stream(stream_url)
-
-        # Start the stream extension thread
-        if not stream_extension_active:
-            stream_extension_active = True
-            stream_extension_thread = Thread(target=extend_stream, daemon=True)
-            stream_extension_thread.start()
-    except requests.RequestException as req_err:
-        logging.error(f"Failed to fetch the live stream due to a request error: {req_err}")
-    except ValueError as val_err:
-        logging.error(f"Error with live stream: {val_err}")
-    except Exception as gen_err:
-        logging.error(f"An unexpected error occurred: {gen_err}")
-
 def stop_live_stream():
     """
     Stop the live stream and the extension thread.
@@ -357,7 +352,6 @@ def stop_live_stream():
         stream_extension_thread = None
         current_stream_extension_token = None
 
-
 # === Device Management ===
 def list_nest_devices(access_token):
     """
@@ -387,3 +381,4 @@ def validate_camera_device(devices, device_id, trait="sdm.devices.traits.CameraE
         if device['name'] == device_id and trait in device.get('traits', {}):
             return True
     return False
+ 
