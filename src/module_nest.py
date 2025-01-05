@@ -170,7 +170,7 @@ def get_camera_live_stream(access_token):
     """
     url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
     headers = {"Authorization": f"Bearer {access_token}"}
-    payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {}}
+    payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {"resolution": {"width": 640, "height": 480}}}
     logging.info(f"URL: {url}")
 
     response = requests.post(url, json=payload, headers=headers)
