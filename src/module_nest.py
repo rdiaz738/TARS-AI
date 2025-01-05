@@ -18,10 +18,14 @@ NEST_API_URL = "https://smartdevicemanagement.googleapis.com/v1"
 app = Flask(__name__)  # Flask app for OAuth callback
 auth_code = None  # Global variable to store the authorization code
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
-logging.info(f"Using Client ID: {CONFIG['NEST']['client_id']}")
+print(f"Using Client ID: {CONFIG['NEST']['client_id']}")
 
-# Event to signal QR code window to close
+# === Global Variables for QR Code Window and Stream Extension ===
 qr_closed_event = Event()
+qr_window = None  # Global variable to reference the QR code window
+current_stream_extension_token = None  # To store the current stream extension token
+stream_extension_thread = None  # To reference the extension thread
+stream_extension_active = False  # Flag to control the extension thread
 
 # === Helper Functions ===
 def log_error_and_raise(message, response=None):
@@ -45,7 +49,7 @@ def get_auth_code_url():
         "response_type": "code",
         "scope": "https://www.googleapis.com/auth/sdm.service"
     }
-    return f"https://nestservices.google.com/partnerconnections/{CONFIG['NEST']['project_id']}/auth?{urlencode(params)}"
+    return f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
 
 @app.route("/callback")
 def callback():
@@ -62,6 +66,7 @@ def generate_qr_code(auth_url):
     """
     Generate the QR code image.
     """
+    global qr_window
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(auth_url)
     qr.make(fit=True)
@@ -88,15 +93,7 @@ def display_qr_code(img):
     instruction = tk.Label(root, text="Scan this QR code with your device to authenticate.")
     instruction.pack(pady=(0, 20))
 
-    # Periodically check if the QR code should be closed
-    def check_event():
-        if qr_closed_event.is_set():
-            close_window()
-        else:
-            root.after(1000, check_event)  # Check every second
-
-    root.after(1000, check_event)
-    root.mainloop()
+    # Do NOT start mainloop here; it will be started in the main thread
 
 def exchange_code_for_tokens():
     """
@@ -187,6 +184,18 @@ def start_auth_flow():
     devices = list_nest_devices(access_token)
     logging.info("Access Token stored successfully.")
     return devices
+
+# === Token Management ===
+def get_access_token():
+    """
+    Retrieve the access token from the configuration.
+    """
+    access_token = CONFIG['NEST'].get('access_token')
+    logging.info(f"ACCESS TOKEN: {access_token}")
+    if not access_token:
+        logging.error("No access token found in configuration.")
+        raise Exception("Missing access token.")
+    return access_token
 
 # === Camera Snapshot and Live Stream ===
 def get_camera_snapshot(access_token):
@@ -312,11 +321,11 @@ def extend_stream():
         try:
             # Wait for 4 minutes before extending (to ensure it's before the 5-minute expiry)
             time.sleep(240)  # 4 minutes in seconds
-
+            
             if not current_stream_extension_token:
                 logging.warning("No stream extension token available to extend the stream.")
                 continue
-
+            
             access_token = get_access_token()
             device_id = CONFIG['NEST']['device_id']
             project_id = CONFIG['NEST']['project_id']
@@ -407,6 +416,19 @@ def validate_camera_device(devices, device_id, trait="sdm.devices.traits.CameraE
     return False
 
 # === Entry Point ===
+def run_authentication():
+    """
+    Entry point to start the authentication flow.
+    This function can be called from module_main.py in a separate thread.
+    """
+    try:
+        start_auth_flow()
+    except Exception as e:
+        logging.error(f"Authentication flow failed: {e}")
+
+# Note: Do NOT call start_auth_flow() here to prevent blocking when importing this module.
+# Instead, call run_authentication() from module_main.py in a separate thread.
+ # === Entry Point ===
 def run_authentication():
     """
     Entry point to start the authentication flow.
