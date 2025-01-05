@@ -134,14 +134,14 @@ def start_auth_flow():
         except Exception as e:
             logging.error(f"Flask server failed to start: {e}")
 
-    Thread(target=run_flask).start()
+    Thread(target=run_flask, daemon=True).start()
 
     auth_url = get_auth_code_url()
     logging.info(f"Visit this URL to authenticate:\n{auth_url}")
     generate_qr_code(auth_url)
 
     while auth_code is None:
-        pass
+        time.sleep(1)  # Prevent busy waiting
 
     tokens = exchange_code_for_tokens()
     access_token = tokens.get("access_token")
@@ -153,6 +153,7 @@ def start_auth_flow():
     devices = list_nest_devices(access_token)
     logging.info("Access Token stored successfully.")
     return devices
+
 
 # === Token Management ===
 def get_access_token():
