@@ -171,6 +171,8 @@ def start_auth_flow():
 
     # Display the QR code in the main thread (Tkinter's mainloop must run here)
     display_qr_code(qr_image)
+    while auth_code is None:
+        time.sleep(1)  # Prevent busy waiting
 
     # After mainloop exits (authentication complete), exchange code for tokens
     tokens = exchange_code_for_tokens()
