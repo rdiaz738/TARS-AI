@@ -10,12 +10,16 @@ import qrcode  # For generating QR codes
 import os  # For launching VLC/FFmpeg
 from module_config import load_config
 import subprocess
+import tkinter as tk
+from PIL import ImageTk
 
 # Load configuration
 CONFIG = load_config()
 NEST_API_URL = "https://smartdevicemanagement.googleapis.com/v1"
 app = Flask(__name__)  # Flask app for OAuth callback
 auth_code = None  # Global variable to store the authorization code
+qr_window = None  # To keep track of the QR code window
+
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
 print(f"Using Client ID: {CONFIG['NEST']['client_id']}")
 
@@ -48,19 +52,39 @@ def callback():
     """
     Handle the OAuth callback and extract the authorization code.
     """
-    global auth_code
+    global auth_code, qr_window
     auth_code = request.args.get("code")
+    if qr_window:
+        qr_window.destroy()  # Close the QR code window
     return "Authorization successful! You can close this tab."
 
 def generate_qr_code(auth_url):
     """
-    Generate a QR code for the authorization URL.
+    Generate and display the QR code in a Tkinter window.
     """
     qr = qrcode.QRCode(version=1, box_size=10, border=5)
     qr.add_data(auth_url)
     qr.make(fit=True)
     img = qr.make_image(fill='black', back_color='white')
-    img.show()
+
+    # Initialize Tkinter window
+    root = tk.Tk()
+    root.title("Scan QR Code for Authentication")
+
+    # Convert PIL image to ImageTk
+    img_tk = ImageTk.PhotoImage(img)
+    label = tk.Label(root, image=img_tk)
+    label.pack()
+
+    # Store reference to root to close it later
+    global qr_window
+    qr_window = root
+
+    # Start Tkinter main loop in a separate thread
+    Thread(target=root.mainloop).start()
+
+
+import time  # Add this import at the top
 
 def exchange_code_for_tokens():
     """
@@ -80,9 +104,35 @@ def exchange_code_for_tokens():
     }
     response = requests.post(url, data=payload)
     if response.status_code == 200:
-        return response.json()
+        tokens = response.json()
+        CONFIG['NEST']['access_token'] = tokens.get("access_token")
+        CONFIG['NEST']['refresh_token'] = tokens.get("refresh_token")
+        CONFIG['NEST']['token_expiry'] = time.time() + tokens.get("expires_in", 300)  # Default to 5 minutes
+        return tokens
     else:
         log_error_and_raise("Failed to exchange code", response)
+        
+def refresh_access_token():
+    """
+    Refresh the access token using the refresh token.
+    """
+    url = "https://oauth2.googleapis.com/token"
+    payload = {
+        "client_id": CONFIG['NEST']['client_id'],
+        "client_secret": CONFIG['NEST']['client_secret'],
+        "refresh_token": CONFIG['NEST']['refresh_token'],
+        "grant_type": "refresh_token"
+    }
+    response = requests.post(url, data=payload)
+    if response.status_code == 200:
+        tokens = response.json()
+        CONFIG['NEST']['access_token'] = tokens.get("access_token")
+        CONFIG['NEST']['token_expiry'] = time.time() + tokens.get("expires_in", 300)
+        logging.info("Access token refreshed successfully.")
+        return CONFIG['NEST']['access_token']
+    else:
+        log_error_and_raise("Failed to refresh access token", response)
+
 
 def start_auth_flow():
     """
@@ -119,14 +169,19 @@ def start_auth_flow():
 # === Token Management ===
 def get_access_token():
     """
-    Retrieve the access token from the configuration.
+    Retrieve a valid access token, refreshing it if necessary.
     """
     access_token = CONFIG['NEST'].get('access_token')
+    token_expiry = CONFIG['NEST'].get('token_expiry', 0)
+    current_time = time.time()
+
+    if not access_token or current_time >= token_expiry:
+        logging.info("Access token expired or missing. Refreshing token...")
+        access_token = refresh_access_token()
+
     logging.info(f"ACCESS TOKEN: {access_token}")
-    if not access_token:
-        logging.error("No access token found in configuration.")
-        raise Exception("Missing access token.")
     return access_token
+
 
 # === Camera Snapshot and Live Stream ===
 def get_camera_snapshot(access_token):
