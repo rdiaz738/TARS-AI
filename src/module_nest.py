@@ -166,11 +166,19 @@ def fetch_and_display_snapshot():
 
 def get_camera_live_stream(access_token):
     """
-    Fetch a live stream URL from the Nest camera.
+    Fetch a live stream URL from the Nest camera with optional lower resolution settings.
     """
     url = f"{NEST_API_URL}/{CONFIG['NEST']['device_id']}:executeCommand"
     headers = {"Authorization": f"Bearer {access_token}"}
-    payload = {"command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream", "params": {}}
+    payload = {
+        "command": "sdm.devices.commands.CameraLiveStream.GenerateRtspStream",
+        "params": {
+            "streamFormat": "RTSP",  # Use RTSP for compatibility
+            # Uncomment and modify if the API supports these parameters:
+            # "resolution": {"width": 640, "height": 480},  # Example lower resolution
+            # "frameRate": 15  # Example lower frame rate
+        }
+    }
     logging.info(f"URL: {url}")
 
     response = requests.post(url, json=payload, headers=headers)
@@ -183,14 +191,21 @@ def get_camera_live_stream(access_token):
     else:
         log_error_and_raise("Failed to fetch live stream", response)
 
+
 def play_live_stream(stream_url):
     """
-    Play the live stream using FFplay or fallback to saving the stream.
+    Play the live stream using FFplay or fallback to saving the stream with FFmpeg.
     """
     try:
         logging.info(f"Attempting to play live stream with FFplay: {stream_url}")
         ffplay_cmd = [
-            "ffplay", "-rtsp_transport", "tcp", stream_url
+            "ffplay",
+            "-fflags", "nobuffer",       # Reduce buffering
+            "-flags", "low_delay",       # Enable low-latency mode
+            "-analyzeduration", "100",   # Analyze stream quickly
+            "-probesize", "32",          # Reduce probe size
+            "-rtsp_transport", "tcp",    # Use TCP for RTSP transport
+            stream_url
         ]
         subprocess.run(ffplay_cmd, check=True)
     except subprocess.CalledProcessError as e:
@@ -200,8 +215,13 @@ def play_live_stream(stream_url):
         try:
             output_file = "nest_stream.mp4"
             ffmpeg_cmd = [
-                "ffmpeg", "-rtsp_transport", "tcp", "-i", stream_url,
-                "-c", "copy", output_file
+                "ffmpeg",
+                "-rtsp_transport", "tcp",  # Use TCP for RTSP transport
+                "-i", stream_url,          # Input stream URL
+                "-fflags", "nobuffer",     # Reduce buffering
+                "-flags", "low_delay",     # Enable low-latency mode
+                "-c", "copy",              # Copy codecs without re-encoding
+                output_file
             ]
             logging.info(f"Saving stream to {output_file} with command: {' '.join(ffmpeg_cmd)}")
             subprocess.run(ffmpeg_cmd, check=True)
