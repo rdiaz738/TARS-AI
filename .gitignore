@@ -165,11 +165,16 @@ TARS.wav
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea
 /stt
-/vision
 /llm
+/vision
+stt/
 llm/
 vision/
-stt/
-captured_image.jpg
 config.ini
 output.wav
+/memory/initial_memory.json
+/memory/initial_memory.loaded
+memory/initial_memory.json
+memory/initial_memory.loaded
+./tars.sh
+character/persona.ini
